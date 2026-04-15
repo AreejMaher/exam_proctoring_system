@@ -3,7 +3,7 @@ from rclpy.node import Node
 import cv2
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
-from exam_interfaces.msg import FaceData
+from exam_interfaces.msg import FaceData, FaceList
 
 class Face_Detection(Node):
     def __init__(self):
@@ -23,7 +23,7 @@ class Face_Detection(Node):
             self.get_logger().info("Coulding load the HAAR XML file!!!!")
 
         self.create_subscription(Image, "/camera_frames", self.camera_callback, 10)
-        self.face_pub = self.create_publisher(FaceData, "/face_data", 10)
+        self.face_pub = self.create_publisher(FaceList, "/face_data", 10)
 
     def camera_callback(self, img):
         try:
@@ -40,19 +40,23 @@ class Face_Detection(Node):
                 for (ex,ey,ew,eh) in eyes:
                     cv2.rectangle(roi_color,(ex,ey),(ex+ew,ey+eh),(0,255,0),2)
             
-            face_msg = FaceData()
+            face_data = FaceData()
 
             if (len(faces) > 0):
-                face_msg.face_detected = True
+                face_data.face_detected = True
                 (fx,fy,fw,fh) = faces[0] # as only one student per exam
             else:
-                face_msg.face_detected = False
+                face_data.face_detected = False
                 fx = fy = fw = fh = 0
-            face_msg.face_count = len(faces) # for violation (when zero or more than one)
-            face_msg.x = int(fx)
-            face_msg.y = int(fy)
-            face_msg.w = int(fw)
-            face_msg.h = int(fh)
+            face_data.face_count = len(faces) # for violation (when zero or more than one)
+            face_data.x = int(fx)
+            face_data.y = int(fy)
+            face_data.w = int(fw)
+            face_data.h = int(fh)
+            
+            face_msg = FaceList()
+            face_msg.header = img.header
+            face_msg.detection = face_data
             self.face_pub.publish(face_msg)
 
 
