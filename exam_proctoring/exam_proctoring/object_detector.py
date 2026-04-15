@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from ultralytics import YOLO
 from exam_interfaces.msg import DetectionList, BoundingBox
+
 class ObjectDetectionNode(Node):
     def __init__(self):
         super().__init__('object_node')
@@ -23,6 +22,7 @@ class ObjectDetectionNode(Node):
             '/object_data',
             10)
 
+        self.declare_parameter('confidence_threshold', 0.5) 
 
         self.model = YOLO("yolov8n.pt")  # lightweight model
 
@@ -32,23 +32,30 @@ class ObjectDetectionNode(Node):
         results = self.model(frame)
 
         detections = DetectionList()
+        detections.header = msg.header
+
+        conf_thresh = self.get_parameter('confidence_threshold').value
 
         for r in results:
             for box in r.boxes:
                 cls = int(box.cls[0])
                 label = self.model.names[cls]
+                confidence = float(box.conf[0])
 
-                # نفلتر بس الحاجات المهمة
-                if label in ["cell phone", "book"]:
+                if label in ["cell phone", "book"] and confidence >= conf_thresh:
                     b = box.xyxy[0]
 
                     bbox = BoundingBox()
-                    bbox.x = int(b[0])
-                    bbox.y = int(b[1])
-                    bbox.width = int(b[2] - b[0])
-                    bbox.height = int(b[3] - b[1])
 
-                    detections.boxes.append(bbox)
+                    bbox.x1 = int(b[0])
+                    bbox.y1 = int(b[1])
+                    bbox.x2 = int(b[2])
+                    bbox.y2 = int(b[3])
+
+                    bbox.confidence = float(box.conf[0])
+                    bbox.class_name = label
+    
+                    detections.detections.append(bbox)
 
         self.publisher.publish(detections)
 

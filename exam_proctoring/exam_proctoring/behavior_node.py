@@ -79,33 +79,56 @@ class BehaviorAnalysisNode(Node):
         # depth_map = numpy array (32FC1)
         objs, faces, depth_map = sync_data
 
+        height, width = depth_map.shape
+        
         attention_threshold = self.get_parameter('attention_threshold').get_parameter_value().double_value
 
         behavior_issues = []
 
         # --- Face Logic ---
-        if len(faces) == 0:
-            behavior_issues.append("Violation: No Face Detected!")
+        if len(faces) == 0 or faces[0].face_count == 0:
+            behavior_issues.append("Violation: Looking Away or No Face Detected!")
+        
+        elif faces[0].face_count > 1:
+            behavior_issues.append("Violation: Multiple People Detected!")
+        
         else:
-            count = faces[0].face_count 
-            if count == 0:
-                behavior_issues.append("Violation: No Face Detected!")
-            elif count > 1:
-                behavior_issues.append("Violation: Multiple People Detected!")
+            face = faces[0]
+            
+            # Find the center pixel of the student's face
+            face_cx = int(face.x + (face.w / 2))
+            face_cy = int(face.y + (face.h / 2))
+
+            # Safety Check: Prevent crashing if the face is half off-screen
+            face_cx = max(0, min(face_cx, width - 1))
+            face_cy = max(0, min(face_cy, height - 1))
+
+            # Read the exact distance to the student's face
+            student_distance = float(depth_map[face_cy, face_cx])
+
+            # Apply Rule: Unusual Distance
+            if student_distance > attention_threshold:
+                behavior_issues.append(f"Student too far! (Distance: {student_distance:.2f})")
+            elif student_distance < 0.2:
+                behavior_issues.append(f"Student too close! (Distance: {student_distance:.2f})")
 
         # --- Object Logic ---
-        for detection in objs:
-            if detection.class_name in ["cell phone", "book"]:
-                behavior_issues.append(f"Prohibited Object Detected: {detection.class_name}")
+        for obj in objs:
+            if hasattr(obj, 'class_name') and obj.class_name in ["cell phone", "book"]:
+                
+                # Find the center pixel of the phone/book
+                obj_cx = int(obj.x1 + (obj.x2 - obj.x1) / 2)
+                obj_cy = int(obj.y1 + (obj.y2 - obj.y1) / 2)
 
-        # --- Depth Logic ---
-        height, width = depth_map.shape
-        center_dist = float(depth_map[height//2, width//2])
-        
-        if center_dist > attention_threshold:
-            behavior_issues.append("Student too far (Unusual Distance).")
-        elif center_dist < 0.2:
-            behavior_issues.append("Student too close (Unusual Distance).")
+                # Safety Check
+                obj_cx = max(0, min(obj_cx, width - 1))
+                obj_cy = max(0, min(obj_cy, height - 1))
+
+                # Read the exact distance to the object
+                obj_depth = float(depth_map[obj_cy, obj_cx])
+
+                # You can now report exactly how far away the cheating device is!
+                behavior_issues.append(f"Prohibited {obj.class_name} detected at {obj_depth:.2f} distance!")
         
         state_msg = String()
 

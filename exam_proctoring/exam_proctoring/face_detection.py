@@ -56,7 +56,7 @@ class Face_Detection(Node):
             
             face_msg = FaceList()
             face_msg.header = img.header
-            face_msg.detection = face_data
+            face_msg.detections = [face_data]
             self.face_pub.publish(face_msg)
 
 
