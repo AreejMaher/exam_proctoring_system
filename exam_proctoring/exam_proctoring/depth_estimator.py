@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from exam_interfaces.msg import DepthData
+# from exam_interfaces.msg import DepthData
 
 import cv2
 from cv_bridge import CvBridge
@@ -38,7 +38,7 @@ class Depth_Estimator(Node):
         self.depth_threshold = 0.0
 
         self.create_subscription(Image, "/camera_frames", self.camera_callback, 10)
-        self.depth_pub = self.create_publisher(DepthData, "/depth_data", 10)
+        self.depth_pub = self.create_publisher(Image, "/depth_data", 10)
         self.declare_parameter('depth_threshold', self.depth_threshold)
 
     def camera_callback(self, img):
@@ -46,14 +46,18 @@ class Depth_Estimator(Node):
         depth_map = self.depth_model.infer_image(frame) # HxW raw depth map in numpy
         depth_normalized = cv2.normalize(depth_map, None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
         depth_map = self.bridge.cv2_to_imgmsg(depth_normalized, encoding='32FC1', header=img.header)
-        # depth_map = self.bridge.cv2_to_compressed_imgmsg(depth_normalized, encoding='mono8', header=img.header)
-        depth_msg = DepthData()
-        depth_msg.depth_map = depth_map
-        self.get_logger().info(f" depth frame id : {depth_msg.header.frame_id}")
-        
-        # depth_msg.depth_map.header= depth_map.header
 
-        depth_msg.distance = 0.0
+         # --- DISTANCE ESTIMATION ---
+        # Extract a 40x40 pixel box in the center and calculate the mean depth
+        h, w = depth_map.shape
+        center_target = depth_map[h//2-20:h//2+20, w//2-20:w//2+20]
+        estimated_distance = center_target.mean()
+        self.get_logger().info(f"Frame {img.header.frame_id} | Center Distance Score: {estimated_distance:.2f}")
+        
+        depth_msg = Image()
+        depth_msg.depth_map = depth_map
+
+        # depth_msg.depth_map.header= depth_map.header
         self.depth_pub.publish(depth_msg)
 
         # Visualization 
