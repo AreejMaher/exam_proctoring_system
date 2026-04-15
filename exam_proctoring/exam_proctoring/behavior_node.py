@@ -1,7 +1,9 @@
 import rclpy
 from rclpy.node import Node
 from cv_bridge import CvBridge
-from exam_interfaces.msg import FaceList, DetectionList, DepthData
+from exam_interfaces.msg import FaceList, DetectionList
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
 import json
 
 class BehaviorAnalysisNode(Node):
@@ -13,7 +15,7 @@ class BehaviorAnalysisNode(Node):
 
         self.face_sub     = self.create_subscription(FaceList, '/face_data', self.face_callback, 10)
         self.object_sub   = self.create_subscription(DetectionList, '/object_data', self.object_callback, 10)
-        self.depth_sub    = self.create_subscription(DepthData, '/depth_data', self.depth_callback, 10)
+        self.depth_sub    = self.create_subscription(Image, '/depth_data', self.depth_callback, 10)
 
         self.behavior_pub = self.create_publisher(String, '/behavior_state', 10) 
 
@@ -78,16 +80,30 @@ class BehaviorAnalysisNode(Node):
 
         behavior_issues = []
 
-        if self.current_face == "looking away":
-            behavior_issues.append("Student is Looking Away !!!")
+        count = faces.detection.face_count 
+        if count== 0:
+            behavior_issues.append("Violation: No Face Detected!")
+        elif count > 1:
+            behavior_issues.append("Violation: Multiple People Detected!")
 
-        if "phone" in self.current_object or "book" in self.current_object:
-            behavior_issues.append(f"Prohibited Object Detected: {self.current_object}.")
+        count = faces.detections[1]
+        if count == 0:
+            behavior_issues.append("Violation: No Face Detected!")
+        elif count > 1:
+            behavior_issues.append("Violation: Multiple People Detected!")
+
+        for detection in objs.detections:
+            if detection.class_name in ["cell phone", "book"]:
+                behavior_issues.append(f"Prohibited Object Detected: {detection.label}")
+
+        height, width = depth_map.shape
+        center_dist = float(depth_map[height//2, width//2])
         
-        if self.current_depth > attention_threshold:
-            behavior_issues.append("Student is at an unusual distance (too far).")
-        elif self.current_depth < 0.2:
-            behavior_issues.append("Student is at an unusual distance (too close).")
+        if center_dist > attention_threshold:
+            behavior_issues.append("Student too far (Unusual Distance).")
+        elif center_dist < 0.2:
+            behavior_issues.append("Student too close (Unusual Distance).")
+        
 
         state_msg = String()
         
