@@ -35,11 +35,10 @@ class Depth_Estimator(Node):
         self.depth_model.load_state_dict(torch.load(checkpoint_path, map_location='cpu'))
         self.depth_model = self.depth_model.to(self.device).eval()
         
-        self.depth_threshold = 0.0
 
         self.create_subscription(Image, "/camera_frames", self.camera_callback, 10)
         self.depth_pub = self.create_publisher(Image, "/depth_data", 10)
-        self.declare_parameter('depth_threshold', self.depth_threshold)
+        self.declare_parameter('depth_threshold', 15)
 
     def camera_callback(self, img):
         frame = self.bridge.imgmsg_to_cv2(img, desired_encoding='bgr8')
@@ -49,8 +48,14 @@ class Depth_Estimator(Node):
         # Extract a 40x40 pixel box in the center and calculate the mean depth
         h, w = depth_map_raw.shape
         center_target = depth_map_raw[h//2-20:h//2+20, w//2-20:w//2+20]
-        estimated_distance = center_target.mean()
-        self.get_logger().info(f"Frame {img.header.frame_id} | Center Distance Score: {estimated_distance:.2f}") 
+        proximity_score = center_target.mean()
+
+        threshold = self.get_parameter('depth_threshold').value
+    
+        if proximity_score < threshold:
+            self.get_logger().warn(f"Student Out of Bounds! Distance: {proximity_score:.2f}")
+        else:
+            self.get_logger().info(f"Frame {img.header.frame_id} | Center Distance Score: {proximity_score:.2f}") 
 
         depth_map = self.bridge.cv2_to_imgmsg(depth_map_raw, encoding='32FC1', header=img.header)
     

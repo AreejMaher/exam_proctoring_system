@@ -17,21 +17,23 @@ class Face_Detection(Node):
         self.eye_cascade = cv2.CascadeClassifier(eye_xml)
         self.declare_parameter('scale_factor', 1.1)
         self.declare_parameter('min_neighbors', 9)
-        self.scaleFactor = self.get_parameter('scale_factor').value
-        self.minNeighbors = self.get_parameter('min_neighbors').value
+        # self.scaleFactor = self.get_parameter('scale_factor').value
+        # self.minNeighbors = self.get_parameter('min_neighbors').value
         if self.face_cascade.empty():
             self.get_logger().info("Coulding load the HAAR XML file!!!!")
 
-        self.create_subscription(Image, "/camera_frames", self.camera_callback, 10)
-        self.face_pub = self.create_publisher(FaceList, "/face_data", 10)
+        self.create_subscription(Image, "/camera_frames", self.camera_callback, 100)
+        self.face_pub = self.create_publisher(FaceList, "/face_data", 100)
 
     def camera_callback(self, img):
         try:
             frame = self.bridge.imgmsg_to_cv2(img, desired_encoding= "bgr8")
             # self.get_logger().info(f"frame (height, width, channel) :  {frame.shape}")
             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-            faces = self.face_cascade.detectMultiScale(gray_frame, self.scaleFactor, self.minNeighbors)
+            current_scale = self.get_parameter('scale_factor').value
+            current_min = self.get_parameter('min_neighbors').value
+            faces = self.face_cascade.detectMultiScale(gray_frame, current_scale, current_min)
+            
             for (x,y,w,h) in faces:
                 frame = cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
                 roi_gray = gray_frame[y:y+h, x:x+w]
@@ -57,6 +59,7 @@ class Face_Detection(Node):
             face_msg = FaceList()
             face_msg.header = img.header
             face_msg.detections = [face_data]
+            self.get_logger().info(f"Frame {img.header.frame_id} | face detected {face_data.face_detected} | face counts {face_data.face_count}")
             self.face_pub.publish(face_msg)
 
 
@@ -64,8 +67,8 @@ class Face_Detection(Node):
             cv2.waitKey(1)
             # cv2.destroyAllWindows()
             
-        except:
-            self.get_logger().error(f"Conversion failed!!!!!!")
+        except Exception as e:
+            self.get_logger().error(f"Callback Failed: {e}")
 
 def main(args=None):
     rclpy.init(args=args)

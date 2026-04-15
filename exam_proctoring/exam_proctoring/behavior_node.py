@@ -11,34 +11,21 @@ class BehaviorAnalysisNode(Node):
         super().__init__('behavior_analysis_node')
         self.get_logger().info("Behavior Analysis Node Started.")
 
-        self.declare_parameter("attention_threshold", 1.5)
+        self.declare_parameter("attention_threshold", 18.7)
 
-        self.face_sub     = self.create_subscription(FaceList, '/face_data', self.face_callback, 10)
-        self.object_sub   = self.create_subscription(DetectionList, '/object_data', self.object_callback, 10)
-        self.depth_sub    = self.create_subscription(Image, '/depth_data', self.depth_callback, 10)
+        self.face_sub     = self.create_subscription(FaceList, '/face_data', self.face_callback, 100)
+        self.object_sub   = self.create_subscription(DetectionList, '/object_data', self.object_callback, 100)
+        self.depth_sub    = self.create_subscription(Image, '/depth_data', self.depth_callback, 100)
 
         self.behavior_pub = self.create_publisher(String, '/behavior_state', 10) 
-
-        self.current_face   = "looking_forward"
-        self.current_object = "none"
-        self.current_depth  =  0.5
 
         self.object_dir = {}
         self.face_dir = {}
         self.depth_dir = {}
-        
-        self.face_counts = 0
-        self.face_detected = False
 
-        # Camera Intrinsics
-        FX = 500.0  
-        FY = 500.0
-        CX = 320.0
-        CY = 240.0
+        self.timer = self.create_timer(0.2, self.analyze_behavior)
 
         self.bridge = CvBridge()
-
-        self.timer = self.create_timer((0.2), self.analyze_behavior)
 
     def object_callback(self, object_msg):
         self.object_dir[object_msg.header.frame_id] = object_msg.detections
@@ -51,22 +38,29 @@ class BehaviorAnalysisNode(Node):
         self.depth_dir[depth_msg.header.frame_id] = depth_map
 
     def process(self):
-        if len(self.object_dir) == 0 or len(self.face_dir) == 0 or len(self.depth_dir) == 0 :
-            self.get_logger().info(f"Waiting for data....")
-            return
+            if len(self.object_dir) == 0 or len(self.face_dir) == 0 or len(self.depth_dir) == 0:
+                self.get_logger().info("Waiting for data from all sensors...", throttle_duration_sec=2.0)
+                return None
 
-        common_ids = set(self.object_dir.keys()) & set(self.face_dir.keys()) & set(self.depth_dir.keys())
-        if not common_ids:
-            self.get_logger().warn("No matching Frame IDs found yet....")
-            return None
-        
-        last_sync_id = max(common_ids, key=int)
+            common_ids = set(self.object_dir.keys()) & set(self.face_dir.keys()) & set(self.depth_dir.keys())
 
-        sync_objects = self.object_dir[last_sync_id]
-        sync_faces   = self.face_dir[last_sync_id]
-        sync_depth   = self.depth_dir[last_sync_id]
+            if not common_ids:
+                self.get_logger().warn("Sensors are running, but no matching Frame IDs found yet...", throttle_duration_sec=2.0)
+                return None
+            
+            last_sync_id = max(common_ids, key=int)
 
-        return sync_objects, sync_faces, sync_depth
+            sync_objects = self.object_dir[last_sync_id]
+            sync_faces   = self.face_dir[last_sync_id]
+            sync_depth   = self.depth_dir[last_sync_id]
+
+            #  MEMORY CLEANUP
+            for d in [self.object_dir, self.face_dir, self.depth_dir]:
+                keys_to_delete = [k for k in d.keys() if int(k) <= int(last_sync_id)]
+                for k in keys_to_delete:
+                    del d[k]
+
+            return sync_objects, sync_faces, sync_depth
 
 
     def analyze_behavior(self):
@@ -81,10 +75,9 @@ class BehaviorAnalysisNode(Node):
 
         height, width = depth_map.shape
         
-        attention_threshold = self.get_parameter('attention_threshold').get_parameter_value().double_value
+        attention_threshold = self.get_parameter('attention_threshold').value
 
         behavior_issues = []
-
         # --- Face Logic ---
         if len(faces) == 0 or faces[0].face_count == 0:
             behavior_issues.append("Violation: Looking Away or No Face Detected!")
@@ -107,9 +100,9 @@ class BehaviorAnalysisNode(Node):
             student_distance = float(depth_map[face_cy, face_cx])
 
             # Unusual Distance
-            if student_distance > attention_threshold:
+            if student_distance < attention_threshold :
                 behavior_issues.append(f"Student too far! (Distance: {student_distance:.2f})")
-            elif student_distance < 0.2:
+            if student_distance > 19.7:
                 behavior_issues.append(f"Student too close! (Distance: {student_distance:.2f})")
 
         # --- Object Logic ---
@@ -139,13 +132,15 @@ class BehaviorAnalysisNode(Node):
         else:
             state_data = {
                 "status": "Normal",
-                "reasons": ["Student is focused."]
+                "reasons": [f"Student is focused (Distance Score: {student_distance:.2f})"]
             }
         
         state_msg.data = json.dumps(state_data)
         self.behavior_pub.publish(state_msg)
-        self.get_logger().debug(f"Published Behavior State: {state_data['status']}")
-            
+        reasons_str = " | ".join(state_data['reasons'])
+        self.get_logger().info(f"State: {state_data['status']} -> {reasons_str}")
+        # self.get_logger().info(f"State: {state_data['status']} | Rules Triggered: {len(behavior_issues)}")
+                
 def main(args=None):
     rclpy.init(args=args)
     node = BehaviorAnalysisNode()

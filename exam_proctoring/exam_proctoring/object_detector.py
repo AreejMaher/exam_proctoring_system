@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+import cv2
 from ultralytics import YOLO
 from exam_interfaces.msg import DetectionList, BoundingBox
 
@@ -58,6 +59,9 @@ class ObjectDetectionNode(Node):
                     detections.detections.append(bbox)
 
         self.publisher.publish(detections)
+        plotted_frame = results[0].plot()
+        cv2.imshow('YOLO Object Detection', plotted_frame)
+        cv2.waitKey(1)
 
 def main(args=None):
     rclpy.init(args=args)
