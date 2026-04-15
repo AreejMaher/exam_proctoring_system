@@ -45,10 +45,14 @@ class Depth_Estimator(Node):
         frame = self.bridge.imgmsg_to_cv2(img, desired_encoding='bgr8')
         depth_map = self.depth_model.infer_image(frame) # HxW raw depth map in numpy
         depth_normalized = cv2.normalize(depth_map, None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        depth_map = self.bridge.cv2_to_imgmsg(depth_normalized, encoding='mono8', header=img.header)
+        depth_map = self.bridge.cv2_to_imgmsg(depth_normalized, encoding='32FC1', header=img.header)
         # depth_map = self.bridge.cv2_to_compressed_imgmsg(depth_normalized, encoding='mono8', header=img.header)
         depth_msg = DepthData()
         depth_msg.depth_map = depth_map
+        self.get_logger().info(f" depth frame id : {depth_msg.header.frame_id}")
+        
+        # depth_msg.depth_map.header= depth_map.header
+
         depth_msg.distance = 0.0
         self.depth_pub.publish(depth_msg)
 
