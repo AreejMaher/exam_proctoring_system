@@ -74,28 +74,31 @@ class BehaviorAnalysisNode(Node):
         if sync_data is None:
             return
         
+        # objs = List of BoundingBox
+        # faces = List of FaceData
+        # depth_map = numpy array (32FC1)
         objs, faces, depth_map = sync_data
 
         attention_threshold = self.get_parameter('attention_threshold').get_parameter_value().double_value
 
         behavior_issues = []
 
-        count = faces.detection.face_count 
-        if count== 0:
+        # --- Face Logic ---
+        if len(faces) == 0:
             behavior_issues.append("Violation: No Face Detected!")
-        elif count > 1:
-            behavior_issues.append("Violation: Multiple People Detected!")
+        else:
+            count = faces[0].face_count 
+            if count == 0:
+                behavior_issues.append("Violation: No Face Detected!")
+            elif count > 1:
+                behavior_issues.append("Violation: Multiple People Detected!")
 
-        count = faces.detections[1]
-        if count == 0:
-            behavior_issues.append("Violation: No Face Detected!")
-        elif count > 1:
-            behavior_issues.append("Violation: Multiple People Detected!")
-
-        for detection in objs.detections:
+        # --- Object Logic ---
+        for detection in objs:
             if detection.class_name in ["cell phone", "book"]:
-                behavior_issues.append(f"Prohibited Object Detected: {detection.label}")
+                behavior_issues.append(f"Prohibited Object Detected: {detection.class_name}")
 
+        # --- Depth Logic ---
         height, width = depth_map.shape
         center_dist = float(depth_map[height//2, width//2])
         
@@ -104,11 +107,9 @@ class BehaviorAnalysisNode(Node):
         elif center_dist < 0.2:
             behavior_issues.append("Student too close (Unusual Distance).")
         
-
         state_msg = String()
-        
+
         if len(behavior_issues) > 0:
-            # Combine the face + object + depth reasoning 
             state_data = {
                 "status": "Suspicious",
                 "reasons": behavior_issues
