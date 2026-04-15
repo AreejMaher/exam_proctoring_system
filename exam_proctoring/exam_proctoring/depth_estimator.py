@@ -43,24 +43,21 @@ class Depth_Estimator(Node):
 
     def camera_callback(self, img):
         frame = self.bridge.imgmsg_to_cv2(img, desired_encoding='bgr8')
-        depth_map = self.depth_model.infer_image(frame) # HxW raw depth map in numpy
-        depth_normalized = cv2.normalize(depth_map, None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        depth_map = self.bridge.cv2_to_imgmsg(depth_normalized, encoding='32FC1', header=img.header)
+        depth_map_raw = self.depth_model.infer_image(frame) # HxW raw depth map in numpy
 
-         # --- DISTANCE ESTIMATION ---
+        # --- DISTANCE ESTIMATION ---
         # Extract a 40x40 pixel box in the center and calculate the mean depth
-        h, w = depth_map.shape
-        center_target = depth_map[h//2-20:h//2+20, w//2-20:w//2+20]
+        h, w = depth_map_raw.shape
+        center_target = depth_map_raw[h//2-20:h//2+20, w//2-20:w//2+20]
         estimated_distance = center_target.mean()
-        self.get_logger().info(f"Frame {img.header.frame_id} | Center Distance Score: {estimated_distance:.2f}")
-        
-        depth_msg = Image()
-        depth_msg.depth_map = depth_map
+        self.get_logger().info(f"Frame {img.header.frame_id} | Center Distance Score: {estimated_distance:.2f}") 
 
-        # depth_msg.depth_map.header= depth_map.header
-        self.depth_pub.publish(depth_msg)
+        depth_map = self.bridge.cv2_to_imgmsg(depth_map_raw, encoding='32FC1', header=img.header)
+    
+        self.depth_pub.publish(depth_map)
 
         # Visualization 
+        depth_normalized = cv2.normalize(depth_map_raw, None, 0, 255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
         depth_colormap = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_JET)
         cv2.imshow('Depth Map', depth_colormap)
         cv2.waitKey(1)
