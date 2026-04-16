@@ -29,6 +29,8 @@ setup(
             'camera_stream = exam_proctoring.camera_stream:main',
             'object_detector = exam_proctoring.object_detector:main',
             'behavior_node = exam_proctoring.behavior_node:main',
+            'rule_evaluation = exam_proctoring.rule_evaluation:main',
+            'system_monitor = exam_proctoring.system_monitor:main',
         ],
     },
 )
