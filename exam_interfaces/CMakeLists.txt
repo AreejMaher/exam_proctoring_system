@@ -5,10 +5,12 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/CheckViolation.srv"	
   "msg/BoundingBox.msg"
   "msg/DetectionList.msg"
-  "msg/DepthData.msg"
+  "msg/FaceList.msg"
   "msg/FaceData.msg"
+  "action/AlertAction.action"
   DEPENDENCIES std_msgs sensor_msgs
 )
 

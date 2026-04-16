@@ -31,6 +31,8 @@ setup(
             'behavior_node = exam_proctoring.behavior_node:main',
             'rule_evaluation = exam_proctoring.rule_evaluation:main',
             'system_monitor = exam_proctoring.system_monitor:main',
+            'alert_node = exam_proctoring.alert_node:main',
+
         ],
     },
 )

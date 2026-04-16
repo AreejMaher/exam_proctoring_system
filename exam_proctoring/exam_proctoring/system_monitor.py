@@ -7,6 +7,8 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from exam_interfaces.srv import CheckViolation
 from exam_interfaces.msg import DetectionList, FaceData, FaceList
+from rclpy.action import ActionClient
+from exam_interfaces.action import AlertAction
 import os
 import json
 
@@ -17,20 +19,24 @@ class SystemMonitor(Node):
         self.timer = self.create_timer(1, self.display_status)
 
         # Subscribers
+        self.create_subscription(Image, '/camera_frames', self.camera_cb, 10)
         self.create_subscription(FaceList, '/face_data', self.face_cb, 10)
         self.create_subscription(DetectionList, '/object_data', self.obj_cb, 10)
         self.create_subscription(Image, '/depth_data', self.depth_cb, 10)
         self.create_subscription(String, '/behavior_state', self.behavior_cb, 10)
         self.create_subscription(String, '/violation_event', self.violation_cb, 10)
-        self.create_subscription(String, '/alert_status', self.alert_cb, 10)
 
         # Service Client
         self.client = self.create_client(CheckViolation, '/check_violation')
+
+        # Action Client
+        self.alert_client = ActionClient(self, AlertAction, 'alert_action')
 
         self.bridge = CvBridge()
 
         # dictionary for topic messages
         self.data_log = {
+            "frames": 0,
             "faces": "N/A",
             "object": "N/A", 
             "depth": 0.0,
@@ -40,12 +46,19 @@ class SystemMonitor(Node):
             "alert": "Idle",
             "service_msg": "No violations yet",
             "violation_detected": False,
+            "count": 0
         }
 
     # callback functions for subscribers
-    def face_cb(self, msg):
-        num_faces = len(msg.detections)
-        self.data_log["faces"] = f"{num_faces} faces detected"         
+    def face_cb(self, msg): 
+        valid_faces = [f for f in msg.detections if f.w > 0] 
+        
+        num_faces = len(valid_faces)
+        
+        if num_faces == 0:
+            self.data_log["faces"] = "0 faces detected"
+        else:
+            self.data_log["faces"] = f"{num_faces} faces detected"        
 
     def obj_cb(self, msg):
         detected_list = [d.class_name for d in msg.detections]
@@ -94,12 +107,16 @@ class SystemMonitor(Node):
             self.data_log["violation_details"] = msg.data
 
 
-    def alert_cb(self, msg): self.data_log["alert"] = msg.data
+    def camera_cb(self, msg): 
+        self.data_log["frames"] += 1
+        self.data_log["count"] = 0
 
 
 
     def display_status(self):
         os.system('cls' if os.name == 'nt' else 'clear') # clear terminal
+
+        self.data_log["count"] += 1
 
         if self.data_log['behavior'] == "Normal":
             self.data_log['violation_details'] = "Student is focused"
@@ -112,13 +129,27 @@ class SystemMonitor(Node):
         print("=" * 30)
         print("===  EXAM PROCTOR MONITOR  ===")
         print("=" * 30)
-        
-        print(f"Faces:           {self.data_log['faces']}")
-        print(f"Object Detected: {self.data_log['object']}")
-        print(f"Distance:        {self.data_log['distance']}")
-        print(f"Behavior State:  {self.data_log['behavior']}")
-        print(f"Violation Event: {self.data_log['violation_details']}")
-        print(f"Alert Status:    {self.data_log['alert']}")
+
+        if self.data_log["count"] < 3:
+            if self.data_log["frames"] > 0:
+                print("Camera Stream is Running")
+            else:
+                print("Camera Stream is Off")
+        else:
+            print("Camera Stream has stopped")
+
+        print()
+
+        print(f"Faces:            {self.data_log['faces']}")
+        print(f"Object Detected:  {self.data_log['object']}")
+        print(f"Distance:         {self.data_log['distance']}")
+        print(f"Behavior State:   {self.data_log['behavior']}")
+        print(f"Violation Events: {self.data_log['violation_details']}")
+
+        if "4" in self.data_log['alert']:
+            self.data_log['alert'] = "Idle"
+
+        print(f"Alert Status:     {self.data_log['alert']}")
         
         print("")
         print("-"*30)
@@ -128,11 +159,33 @@ class SystemMonitor(Node):
     def service_response_callback(self, future):
         try:
             response = future.result()
-            if response.message: # Only update if there's actually a string
+
+            if response.message: 
+
+                if response.violation_detected and not self.data_log['violation_detected']:
+                    self.send_alert_goal(response.message)
+
                 self.data_log['service_msg'] = response.message
                 self.data_log['violation_detected'] = response.violation_detected
         except Exception as e:
             self.get_logger().error(f"Service call failed: {e}")
+
+    def send_alert_goal(self, message):
+        if not self.alert_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().error("Alert Action Server not available!")
+            return 
+        
+        goal_msg = AlertAction.Goal()
+        goal_msg.message = message
+        
+        self.alert_client.send_goal_async(
+            goal_msg, 
+            feedback_callback=self.alert_feedback_callback
+        )
+
+    def alert_feedback_callback(self, feedback_msg):
+        new_feedback = feedback_msg.feedback.feedback
+        self.data_log["alert"] = f"ACTIVATE: {new_feedback}"
 
 def main(args=None):
     rclpy.init(args=args)

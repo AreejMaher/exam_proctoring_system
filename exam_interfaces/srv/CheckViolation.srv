@@ -1,0 +1,3 @@
+---
+bool violation_detected
+string message
