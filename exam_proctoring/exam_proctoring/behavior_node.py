@@ -11,7 +11,7 @@ class BehaviorAnalysisNode(Node):
         super().__init__('behavior_analysis_node')
         self.get_logger().info("Behavior Analysis Node Started.")
 
-        self.declare_parameter("attention_threshold", 18.7)
+        self.declare_parameter("attention_threshold", 19.2)
 
         self.face_sub     = self.create_subscription(FaceList, '/face_data', self.face_callback, 100)
         self.object_sub   = self.create_subscription(DetectionList, '/object_data', self.object_callback, 100)
@@ -102,7 +102,7 @@ class BehaviorAnalysisNode(Node):
             # Unusual Distance
             if student_distance < attention_threshold :
                 behavior_issues.append(f"Student too far! (Distance: {student_distance:.2f})")
-            if student_distance > 19.7:
+            if student_distance > 19.8:
                 behavior_issues.append(f"Student too close! (Distance: {student_distance:.2f})")
 
         # --- Object Logic ---
